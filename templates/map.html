@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no, width=device-width">
+    <title>查找房源</title>
+    <link rel="stylesheet" href="https://cache.amap.com/lbs/static/main.css"/>
+    <script type="text/javascript"
+            src="https://webapi.amap.com/maps?v=1.4.1&key={{ key }}"></script>
+    <script type="text/javascript" src="{{ url_for('static', filename='jquery-3.2.1.min.js')}}"></script>
+    <style type="text/css">
+        body {
+            font-size: 12px;
+        }
+        #panel {
+            position: fixed;
+            background-color: white;
+            max-height: 90%;
+            overflow-y: auto;
+            top: 10px;
+            right: 10px;
+            width: 280px;
+            border-bottom: solid 1px silver;
+        }
+        .control-panel {
+            position: absolute;
+            top: 30px;
+            right: 20px;
+        }
+        .control-entry {
+            width: 280px;
+            background-color: rgba(119, 136, 153, 0.8);
+            font-family: fantasy, sans-serif;
+            text-align: left;
+            color: white;
+            overflow: auto;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+
+        .control-input {
+            margin-left: 120px;
+        }
+
+        .control-input input[type="text"] {
+            width: 160px;
+        }
+
+        .control-panel label {
+            float: left;
+            width: 120px;
+        }
+
+        #transfer-panel {
+            position: absolute;
+            background-color: white;
+            max-height: 80%;
+            overflow-y: auto;
+            top: 30px;
+            left: 100px;
+            width: 250px;
+        }
+        .label{
+            border: solid 1px red;
+            color: red;
+            float: left;
+            width: 50px;
+            background-color: rgba(255,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div id="mapContainer"></div>
+    <div class="control-panel">
+        <div class="control-entry">
+            <label>选择城市：</label>
+            <div class="control-input">
+                <select id="city">
+                    <option value="杭州">杭州</option>
+                    <option value="北京">北京</option>
+                    <option value="上海">上海</option>
+                    <option value="广州">广州</option>
+                    <option value="深圳">深圳</option>
+                </select>
+            </div>
+        </div>
+        <div class="control-entry">
+            <label>选择工作地点：</label>
+            <div class="control-input">
+                <input id="district" type="hidden">
+                <input id="work-location" type="text">
+            </div>
+        </div>
+        <div class="control-entry">
+            <label>选择通勤方式：</label>
+            <div class="control-input">
+                <input type="radio" name="vehicle" value="SUBWAY,BUS" checked/> 公交+地铁
+                <input type="radio" name="vehicle" value="SUBWAY" /> 地铁
+            </div>
+        </div>
+        <div class="control-entry">
+            <label>选择价格区间：</label>
+            <div class="control-input">
+                <input type="number" id="low_price" value="1000" style="width:80px">最低价
+                <input type="number" id="high_price" value="2000" style="width:80px">最高价
+            </div>
+            <label>选择房源来源</label>
+            <div class="control-input">
+                <select id="source">
+                    <option value="58" selected>58</option>
+                    <option value="自如" selected>自如</option>
+                </select>
+            </div>
+            <label>选择租赁方式</label>
+            <div class="control-input">
+                <input type="radio" name="type" value="1" checked>合租
+            </div>
+            <label>选择返回公寓数量</label>
+            <div class="control-input">
+                <select id="limit">
+                    <option value="1">1</option>
+                    <option value="5" selected>5</option>
+                    <option value="10">10</option>
+                    <option value="15">15</option>
+                </select>
+            </div>
+            <button type="button" onclick="get_rentals()">搜索品牌公寓</button>
+        </div>
+        <div class="control-entry">
+            <label>导入房源文件：</label>
+            <input type="file" name="file" onchange="importRentals(this)">
+        </div>
+    </div>
+    <div id="transfer-panel"></div>
+    <script type="text/javascript">
+        var map = new AMap.Map("mapContainer", {
+            resizeEnable:true,
+            center: [120.155070,30.274084],
+            zoom: 13,
+            keyboardEnable: false
+        });
+        var rentalMarkers = [];
+        var rentalLabels = [];
+        var nearbySearch = '';
+        AMap.plugin(["AMap.ToolBar","AMap.Scale","AMap.OverView", "AMap.Autocomplete",
+         "AMap.PlaceSearch", "AMap.Geocoder"], function(){
+            map.addControl(new AMap.ToolBar());
+            map.addControl(new AMap.Scale());
+            map.addControl(new AMap.OverView({isOpen:true}));
+            placeSearch = new AMap.PlaceSearch({
+                city: "杭州",
+                map: map,
+                pageSize: 1,
+                pageIndex: 1,
+            });
+            geocoder = new AMap.Geocoder({
+                city: "",
+            })
+            var autoOptions = {
+                city: "杭州",
+                input: "work-location"
+            };
+            autocomplete = new AMap.Autocomplete(autoOptions);
+            AMap.event.addListener(autocomplete, "select", function(e){
+                $('#district')[0].value = e.poi.district;
+                placeSearch.search(e.poi.name,function(status, result){
+                });
+            });
+        });
+        $('#city').change(function(){
+            var city = $('#city')[0].value;
+            autocomplete.setCity(city);
+            placeSearch.setCity(city);
+            geocoder.getLocation(city, function(status, result){
+                if(status=='complete'&&result.geocodes.length){
+                    map.setZoomAndCenter(13, result.geocodes[0].location);
+                }
+            })
+        });
+        function createMarkerAndLable(name, location, html){
+            var marker = new AMap.Marker({
+                map: map,
+                title: name,
+                position: location,
+            })
+            rentalMarkers.push(marker);
+            var label = new AMap.Marker({
+                map: map,
+                title: name,
+                content: html,
+                position: location,
+                offset: new AMap.Pixel(-12,-12),
+            })
+            rentalLabels.push(label);
+        };
+        function get_rentals(){
+            var city = $('#city')[0].value;
+            var source = $('#source')[0].value;
+            var low_price = $('#low_price')[0].value;
+            var high_price = $('#high_price')[0].value;
+            var address = $('#work-location')[0].value;
+            var limit = $('#limit')[0].value;
+            if (!address){
+                alert('未填写工作地点')
+            } else {
+                alert('信息爬取中,请等待一到两分钟')
+                $.ajax({
+                    type: 'post',
+                    url: '/get_rentals',
+                    data: {"city":city,"low_price":low_price,"high_price":high_price,"address":address,'limit':limit, 'source': source},
+                    async: false,
+                    success: function (data, status) {
+                        if(data['ret']==0){
+                            delRentalMarkersAndRentalLabels();
+                            map.setZoom(14);
+                            data = data['data'];
+                            for (var i=0; i<data.length;i++){
+                                var name = data[i]['name'];
+                                var url = data[i]['url'];
+                                var location = data[i]['location'];
+                                var html = '<div class="label"><a href="'+url+'" target="_blank">'+name+'</a></div>';
+                                var district = $('#district')[0].value;
+                                var city = $('#city')[0].value;
+                                createMarkerAndLable(name, location, html)
+                                nearbySearch = new AMap.PlaceSearch({
+                                    city: city,
+                                    map: map,
+                                    type: "150500|150501|150700|150701|150702|150703",
+                                })
+                                nearbySearch.searchNearBy("", location, 1000, function(status, result){
+                                });
+                            }}
+                        else{
+                            alert(data['message'])
+                        }
+                    },
+                    error: function (data) {
+                        alert("爬取错误!错误原因:" + data);
+                    }
+                });
+            };
+        }
+        function delRentalMarkersAndRentalLabels(){
+            if(rentalMarkers){
+                map.remove(rentalMarkers);
+            }
+            if(rentalLabels){
+                map.remove(rentalLabels);
+            }
+            if(nearbySearch){
+                nearbySearch.clear();
+                if(nearbySearch.render){
+                    nearbySearch.render.markerList.clear();
+                }
+            }
+        }
+        function clearMap(){
+            map.clearMap();
+        }
+        function importRentals(files){
+            clearMap();
+            var file = files.files;
+            if (file.length){
+                var file = file[0];
+                var filename = file.name;
+                var locations = new Set();
+                $.get('static/'+filename, function(data){
+                    datas = data.split('\n')
+                    for(var i=1;i<datas.length;i++){
+                        if (datas[i]){
+                            var msg = datas[i].split(',')
+                            if (msg.length==5){
+                                var name = msg[1];
+                                var url = msg[2];
+                                var location = new Array();
+                                location.push(msg[3].split("'")[1]);
+                                location.push(msg[4].split("'")[1]);
+                                var html = '<div class="label"><a href="'+url+'" target="_blank">'+name+'</a></div>';
+                                createMarkerAndLable(name, location, html);
+                                map.setCenter(location);
+                                var nearbySearch = new AMap.PlaceSearch({
+                                    city: city,
+                                    map: map,
+                                    type: "150500|150501|150700|150701|150702|150703",
+                                })
+                                nearbySearch.searchNearBy("", location, 1000, function(status, result){
+                                });
+                            }else{
+                                alert('解析失败')
+                            }
+                        }
+                    }
+                })
+            }
+        }
+    </script>
+    <script type="text/javascript" src="https://webapi.amap.com/demos/js/liteToolbar.js"></script>
+</body>
+</html>
