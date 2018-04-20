@@ -11,7 +11,7 @@ from logging import FileHandler, Formatter
 from flask import Flask, render_template, request, jsonify
 import pandas as pd
 
-from Spiders import get_apartments
+from common.Spiders import get_apartments
 
 app = Flask(__name__)
 
